@@ -3,97 +3,116 @@ document.addEventListener("DOMContentLoaded", function () {
     const passwordInput = document.getElementById("password");
     const loginButton = document.getElementById("login-button");
 
-    // 이메일과 비밀번호의 helper text 가져오기
+    // 📌 헬퍼 텍스트 요소 추가
     const emailHelperText = document.createElement("div");
     emailHelperText.classList.add("helper-text");
     emailHelperText.style.display = "none";
-    emailHelperText.textContent = "* 올바른 이메일 주소 형식을 입력해주세요. (예: example@example.com)";
-    emailInput.parentNode.appendChild(emailHelperText);
+    emailInput.insertAdjacentElement("afterend", emailHelperText);
 
-    const passwordHelperText = passwordInput.nextElementSibling;
+    const passwordHelperText = document.createElement("div");
+    passwordHelperText.classList.add("helper-text");
+    passwordHelperText.style.display = "none";
+    passwordInput.insertAdjacentElement("afterend", passwordHelperText);
 
-    // 이메일 및 비밀번호 정규식 패턴
-    const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,20}$/;
+    // 📌 이메일 유효성 검사 정규식
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    function validateInput(input) {
-        let isValid = false;
-        let helperText;
+    // 📌 비밀번호 유효성 검사 정규식
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,20}$/;
 
-        if (input === emailInput) {
-            isValid = emailPattern.test(input.value);
-            helperText = emailHelperText;
-        } else if (input === passwordInput) {
-            isValid = passwordPattern.test(input.value);
-            helperText = passwordHelperText;
-        }
-
-        if (helperText) {
-            helperText.style.display = isValid ? "none" : "block";
-        }
-    }
-
-    function validateForm() {
-        const isEmailValid = emailPattern.test(emailInput.value);
-        const isPasswordValid = passwordPattern.test(passwordInput.value);
-
-        // 로그인 버튼 활성화 여부 결정
-        const isFormValid = isEmailValid && isPasswordValid;
-        loginButton.disabled = !isFormValid;
-        loginButton.classList.toggle("active", isFormValid);
-    }
-
-    // 각 input 요소에 대한 이벤트 리스너 추가 (focus 시 helper text 표시, blur 시 유효성 검사)
-    [emailInput, passwordInput].forEach(input => {
-        input.addEventListener("focus", function () {
-            const helperText = input === emailInput ? emailHelperText : passwordHelperText;
-            helperText.style.display = "block"; // 해당 input의 helper text만 표시
-        });
-
-        input.addEventListener("input", function () {
-            validateInput(this); // 실시간 유효성 검사
-            validateForm();
-        });
-
-        input.addEventListener("blur", function () {
-            validateInput(this); // 포커스 해제 시 유효성 검사
-        });
-    });
-
-    // 초기 버튼 상태 설정
-    validateForm();
-
-    loginButton.addEventListener("click", async function () {
-        if (loginButton.disabled) return; // 버튼이 비활성화된 경우 실행 안 함
-
+    // 📌 입력값 검증 함수
+    function validateInput() {
         const email = emailInput.value.trim();
         const password = passwordInput.value.trim();
 
-        const requestData = { email, password };
+        // 이메일 유효성 검사
+        if (!email) {
+            emailHelperText.textContent = "* 이메일을 입력해주세요.";
+            emailHelperText.style.display = "block";
+        } else if (!emailRegex.test(email)) {
+            emailHelperText.textContent = "* 올바른 이메일 형식이 아닙니다.";
+            emailHelperText.style.display = "block";
+        } else {
+            emailHelperText.style.display = "none";
+        }
 
-        try {
-            // 실제 서버가 없으므로 임의의 서버 주소 사용
-            const response = await fetch("https://jsonplaceholder.typicode.com/users/login", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(requestData)
-            });
+        // 비밀번호 유효성 검사
+        if (!password) {
+            passwordHelperText.textContent = "* 비밀번호를 입력해주세요.";
+            passwordHelperText.style.display = "block";
+        } else if (!passwordRegex.test(password)) {
+            passwordHelperText.textContent =
+                "* 비밀번호는 8자 이상 20자 이하이며, 대문자, 소문자, 숫자, 특수문자를 각각 최소 1개 포함해야 합니다.";
+            passwordHelperText.style.display = "block";
+        } else {
+            passwordHelperText.style.display = "none";
+        }
 
-            const result = await response.json();
+        // 로그인 버튼 활성화 여부 결정
+        loginButton.disabled = !(emailRegex.test(email) && passwordRegex.test(password));
+    }
 
-            if (response.ok) {
-                alert("로그인 성공! 게시글 목록 페이지로 이동합니다.");
-                window.location.href = "posts.html"; // 게시글 목록 페이지로 이동
-            } else if (response.status === 401) {
-                alert("아이디 또는 비밀번호를 확인해주세요.");
-            } else {
-                alert("서버 오류가 발생했습니다. 다시 시도해주세요.");
-            }
-        } catch (error) {
-            console.error("로그인 요청 중 오류 발생:", error);
-            alert("네트워크 오류가 발생했습니다. 다시 시도해주세요.");
+    // 📌 입력 이벤트 추가 (실시간 검증)
+    emailInput.addEventListener("input", validateInput);
+    passwordInput.addEventListener("input", validateInput);
+
+    // 📌 로그인 버튼 클릭 이벤트
+    loginButton.addEventListener("click", async function () {
+        await login();
+    });
+
+    // 📌 Enter 키로 로그인 실행
+    document.addEventListener("keydown", async function (event) {
+        if (event.key === "Enter") {
+            await login();
         }
     });
+
+    async function login() {
+        const email = emailInput.value.trim();
+        const password = passwordInput.value.trim();
+
+        // 입력값 재검증
+        validateInput();
+        if (loginButton.disabled) {
+            return;
+        }
+
+        const loginData = {
+            email: email,
+            password: password,
+        };
+
+        try {
+            const response = await fetch("http://localhost:8080/auth/login", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(loginData),
+                credentials: "include"
+            });
+
+            const responseData = await response.json(); // JSON 파싱
+
+            console.log("📌 [서버 응답]:", responseData);
+
+            if (response.ok) {
+                const { accessToken, refreshToken, grantType } = responseData.data;
+
+                // ✅ 토큰을 로컬 스토리지에 저장
+                localStorage.setItem("accessToken", accessToken);
+                localStorage.setItem("refreshToken", refreshToken);
+                localStorage.setItem("grantType", grantType);
+
+                alert("로그인 성공! 메인 페이지로 이동합니다.");
+                window.location.href = "posts.html"; // 로그인 성공 후 메인 페이지로 이동
+            } else {
+                alert(responseData.message || "로그인에 실패했습니다.");
+            }
+        } catch (error) {
+            console.error("❌ [로그인 오류]:", error);
+            alert("서버와의 연결이 원활하지 않습니다. 네트워크 상태를 확인해주세요.");
+        }
+    }
 });

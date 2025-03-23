@@ -1,233 +1,149 @@
 document.addEventListener("DOMContentLoaded", function () {
     const emailInput = document.getElementById("email");
-    const emailHelper = emailInput.nextElementSibling;
     const passwordInput = document.getElementById("password");
-    const passwordHelper = passwordInput.nextElementSibling;
     const confirmPasswordInput = document.getElementById("password-confirm");
-    const confirmPasswordHelper = confirmPasswordInput.nextElementSibling;
     const nicknameInput = document.getElementById("nickname");
-    const nicknameHelper = nicknameInput.nextElementSibling;
-    const signupButton = document.querySelector(".signup-button");
     const profileUpload = document.getElementById("profile-upload");
     const profileImg = document.getElementById("profile-img");
     const profilePlaceholder = document.querySelector(".profile-placeholder");
+    const signupButton = document.querySelector(".signup-button");
+
+    let profileFile = null; // 프로필 이미지 파일 저장 변수
+
     const profileContainer = document.getElementById("profile-container");
-    const profileHelper = document.querySelector(".profile-helper");
 
-    profileHelper.style.display = "block"; // 프로필 사진 헬퍼 초기 표시
-
-    const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,20}$/;
-    const nicknamePattern = /^[a-zA-Z0-9가-힣]{1,10}$/;
-
-    // 이미 사용된 이메일 및 닉네임 목록 (예제용)
-    const usedEmails = ["test@example.com", "user@domain.com"];
-    const usedNicknames = ["admin", "superuser"];
-
-    // 프로필 사진 클릭 시 파일 업로드 창 열기
-    profileContainer.addEventListener("click", function () {
-        profileUpload.click();
+    // 📌 프로필 영역 클릭 시 파일 업로드 창 열기
+    profileContainer.addEventListener("click", () => {
+        profileUpload.click(); // 파일 업로드 input 실행
     });
 
-    // 파일 선택 시 업로드된 이미지 즉시 반영
-    profileUpload.addEventListener("change", function () {
-        if (profileUpload.files && profileUpload.files[0]) {
+    // 📌 파일 업로드 이벤트 처리
+    profileUpload.addEventListener("change", function (event) {
+        const file = event.target.files[0];
+
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                profileImg.src = e.target.result; // 업로드한 이미지 미리보기
+                profileImg.classList.remove("hidden");
+                profilePlaceholder.style.display = "none"; // + 아이콘 숨김
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // 📌 입력값 유효성 검사를 위한 정규식
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,20}$/;
+    const nicknameRegex = /^[a-zA-Z0-9가-힣]{1,10}$/; // 한글, 영문, 숫자 허용, 1~10자
+
+    // 📌 입력값 검증 함수
+    function validateInput() {
+        const emailValid = emailRegex.test(emailInput.value);
+        const passwordValid = passwordRegex.test(passwordInput.value);
+        const confirmPasswordValid = passwordInput.value === confirmPasswordInput.value;
+        const nicknameValid = nicknameRegex.test(nicknameInput.value);
+        const profileValid = profileFile !== null;
+
+        // 헬퍼 텍스트 표시
+        emailInput.nextElementSibling.style.display = emailValid ? "none" : "block";
+        passwordInput.nextElementSibling.style.display = passwordValid ? "none" : "block";
+        confirmPasswordInput.nextElementSibling.style.display = confirmPasswordValid ? "none" : "block";
+        nicknameInput.nextElementSibling.style.display = nicknameValid ? "none" : "block";
+        document.querySelector(".profile-helper").style.display = profileValid ? "none" : "block";
+
+        // 모든 조건 충족 시 회원가입 버튼 활성화
+        signupButton.disabled = !(emailValid && passwordValid && confirmPasswordValid && nicknameValid && profileValid);
+    }
+
+    // 📌 프로필 이미지 선택
+    profileUpload.addEventListener("change", function (event) {
+        const file = event.target.files[0];
+        if (file) {
+            profileFile = file;
             const reader = new FileReader();
             reader.onload = function (e) {
                 profileImg.src = e.target.result;
-                profileImg.style.display = "block"; // 이미지 표시
-                profileImg.classList.remove("hidden"); // hidden 클래스 제거
-                profilePlaceholder.style.display = "none"; // 기존 회색 배경 제거
-                profileHelper.style.display = "none"; // 헬퍼 텍스트 숨기기
+                profileImg.classList.remove("hidden");
+                profilePlaceholder.style.display = "none";
             };
-            reader.readAsDataURL(profileUpload.files[0]);
-        } else {
-            profileImg.src = "";
-            profileImg.style.display = "none";
-            profilePlaceholder.style.display = "block";
-            profileHelper.style.display = "block";
+            reader.readAsDataURL(file);
         }
-        validateForm();
+        validateInput();
     });
 
-    profileImg.addEventListener("load", validateForm);
+    // 📌 모든 입력값 실시간 검증
+    emailInput.addEventListener("input", validateInput);
+    passwordInput.addEventListener("input", validateInput);
+    confirmPasswordInput.addEventListener("input", validateInput);
+    nicknameInput.addEventListener("input", validateInput);
 
-    function validateEmail() {
-        const emailValue = emailInput.value.trim();
+    // 📌 회원가입 요청
+    async function signup() {
+        if (signupButton.disabled) return; // 버튼 비활성화 상태에서는 실행하지 않음
 
-        if (emailValue === "") {
-            emailHelper.textContent = "*이메일을 입력해주세요.";
-            emailHelper.style.display = "block";
-            return false;
-        } else if (!emailPattern.test(emailValue)) {
-            emailHelper.textContent = "*올바른 이메일 주소 형식을 입력해주세요. (예: example@example.com)";
-            emailHelper.style.display = "block";
-            return false;
-        } else if (usedEmails.includes(emailValue)) {
-            emailHelper.textContent = "*중복된 이메일입니다.";
-            emailHelper.style.display = "block";
-            return false;
-        } else {
-            emailHelper.style.display = "none";
-            return true;
+        const formData = new FormData();
+        formData.append("email", emailInput.value);
+        formData.append("password", passwordInput.value);
+        formData.append("confirmPassword", confirmPasswordInput.value);
+        formData.append("nickname", nicknameInput.value);
+        formData.append("profileImage", profileFile);
+
+        // ✅ 📌 요청 데이터 확인 (FormData 내부 데이터 확인)
+        console.log("📌 [회원가입 요청 데이터]");
+        for (const [key, value] of formData.entries()) {
+            console.log(`${key}:`, value);
         }
-    }
-
-    function validatePassword() {
-        const passwordValue = passwordInput.value.trim();
-
-        if (passwordValue === "") {
-            passwordHelper.textContent = "*비밀번호를 입력해주세요.";
-            passwordHelper.style.display = "block";
-            return false;
-        } else if (!passwordPattern.test(passwordValue)) {
-            passwordHelper.textContent = "*비밀번호는 8자 이상, 20자 이하이며, 대문자, 소문자, 숫자, 특수문자를 각각 최소 1개 포함해야 합니다.";
-            passwordHelper.style.display = "block";
-            return false;
-        } else {
-            passwordHelper.style.display = "none";
-            return true;
-        }
-    }
-
-    function validateConfirmPassword() {
-        const confirmPasswordValue = confirmPasswordInput.value.trim();
-
-        if (confirmPasswordValue === "") {
-            confirmPasswordHelper.textContent = "*비밀번호를 한 번 더 입력해주세요.";
-            confirmPasswordHelper.style.display = "block";
-            return false;
-        } else if (confirmPasswordValue !== passwordInput.value) {
-            confirmPasswordHelper.textContent = "*비밀번호가 다릅니다.";
-            confirmPasswordHelper.style.display = "block";
-            return false;
-        } else {
-            confirmPasswordHelper.style.display = "none";
-            return true;
-        }
-    }
-
-    function validateNickname() {
-        const nicknameValue = nicknameInput.value.trim();
-
-        if (nicknameValue === "") {
-            nicknameHelper.textContent = "*닉네임을 입력해주세요.";
-            nicknameHelper.style.display = "block";
-            return false;
-        } else if (/\s/.test(nicknameValue)) {
-            nicknameHelper.textContent = "*띄어쓰기를 없애주세요.";
-            nicknameHelper.style.display = "block";
-            return false;
-        } else if (nicknameValue.length > 10) {
-            nicknameHelper.textContent = "*닉네임은 최대 10자까지 작성 가능합니다.";
-            nicknameHelper.style.display = "block";
-            return false;
-        } else if (usedNicknames.includes(nicknameValue)) {
-            nicknameHelper.textContent = "*중복된 닉네임입니다.";
-            nicknameHelper.style.display = "block";
-            return false;
-        } else {
-            nicknameHelper.style.display = "none";
-            return true;
-        }
-    }
-
-    function validateForm() {
-        const isEmailValid = validateEmail();
-        const isPasswordValid = validatePassword();
-        const isPasswordConfirmed = validateConfirmPassword();
-        const isNicknameValid = validateNickname();
-        const isProfileUploaded = profileImg.src && profileImg.src !== "";
-
-        // 프로필 사진 helper text 관리
-        profileHelper.style.display = isProfileUploaded ? "none" : "block";
-
-        // 회원가입 버튼 활성화 여부 결정
-        const isFormValid = isEmailValid && isPasswordValid && isPasswordConfirmed && isNicknameValid && isProfileUploaded;
-        signupButton.disabled = !isFormValid;
-        signupButton.classList.toggle("active", isFormValid);
-    }
-
-    // 각 input 요소에 대한 이벤트 리스너 추가
-    [emailInput, passwordInput, confirmPasswordInput, nicknameInput].forEach(input => {
-        input.addEventListener("focus", function () {
-            this.nextElementSibling.style.display = "block"; // 포커스 시 헬퍼 텍스트 보이기
-        });
-
-        input.addEventListener("input", function () {
-            if (input === passwordInput) {
-                validatePassword();
-            } else if (input === confirmPasswordInput) {
-                validateConfirmPassword();
-            } else if (input === nicknameInput) {
-                validateNickname();
-            } else {
-                validateEmail();
-            }
-            validateForm();
-        });
-
-        input.addEventListener("blur", function () {
-            if (input === passwordInput) {
-                validatePassword();
-            } else if (input === confirmPasswordInput) {
-                validateConfirmPassword();
-            } else if (input === nicknameInput) {
-                validateNickname();
-            } else {
-                validateEmail();
-            }
-        });
-    });
-
-    // 초기 화면에서 필드들이 비어있을 경우 헬퍼 텍스트를 표시하도록 설정
-    validateEmail();
-    validatePassword();
-    validateConfirmPassword();
-    validateNickname();
-
-    signupButton.addEventListener("click", async function () {
-        if (signupButton.disabled) return; // 버튼이 활성화된 경우만 실행
-
-        const email = document.getElementById("email").value.trim();
-        const password = document.getElementById("password").value.trim();
-        const nickname = document.getElementById("nickname").value.trim();
-        const profileFile = document.getElementById("profile-upload").files[0];
-
-        let profileImageUrl = "";
-        if (profileFile) {
-            // 실제 서버 업로드가 없으므로, 임시 URL 처리
-            profileImageUrl = URL.createObjectURL(profileFile);
-        }
-
-        const requestData = {
-            email,
-            password,
-            nickname,
-            profileImage: profileImageUrl || "" // 프로필 이미지가 없으면 빈 문자열
-        };
 
         try {
-            // 실제 서버가 없으므로, 임의의 서버 주소로 요청
-            const response = await fetch("https://jsonplaceholder.typicode.com/users/signup", {
+            const response = await fetch("http://localhost:8080/auth/signup", {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(requestData)
+                body: formData,
             });
 
-            const result = await response.json();
+            // ✅ 응답 상태 코드 및 헤더 확인
+            console.log("📌 [서버 응답 상태 코드]:", response.status);
+            console.log("📌 [서버 응답 헤더]:", response.headers);
+
+            const contentType = response.headers.get("content-type");
+            let result;
+
+            if (contentType && contentType.includes("application/json")) {
+                result = await response.json(); // JSON 응답
+            } else {
+                result = await response.text(); // JSON이 아닐 경우 원본 출력
+                console.warn("⚠️ [JSON 응답 아님]:", result);
+            }
+
+            console.log("📌 [서버 응답 데이터]:", result);
+
+            // const text = await response.text();  // 원본 응답을 받아서 확인
+            // console.log("Raw Response:", text);  // 콘솔에 원본 응답 출력
+
+            // const result = JSON.parse(text); // JSON으로 변환 시도
 
             if (response.ok) {
-                alert("회원가입 성공! 로그인 페이지로 이동합니다.");
-                window.location.href = "login.html"; // 성공 시 로그인 페이지 이동
+                alert("회원가입이 완료되었습니다! 로그인 페이지로 이동합니다.");
+                window.location.href = "login.html";
             } else {
-                alert("입력값을 확인해주세요. (잘못된 요청)");
+                alert(result.message || "회원가입에 실패했습니다.");
             }
         } catch (error) {
-            console.error("회원가입 요청 중 오류 발생:", error);
-            alert("네트워크 오류가 발생했습니다. 다시 시도해주세요.");
+            console.error("❌ [회원가입 오류]:", error);
+
+            if (error instanceof TypeError) {
+                console.error("⚠️ [TypeError]: 네트워크 오류 가능성이 높음");
+                alert("서버와의 연결이 원활하지 않습니다. 네트워크 상태를 확인해주세요.");
+            } else if (error instanceof SyntaxError) {
+                console.error("⚠️ [SyntaxError]: JSON 파싱 오류");
+                alert("서버 응답을 처리하는 중 오류가 발생했습니다.");
+            } else {
+                console.error("⚠️ [알 수 없는 오류]:", error);
+                alert("예상치 못한 오류가 발생했습니다. 개발자 도구에서 콘솔을 확인해주세요.");
+            }
         }
-    });
+    }
+
+    // 📌 회원가입 버튼 클릭 이벤트
+    signupButton.addEventListener("click", signup);
 });

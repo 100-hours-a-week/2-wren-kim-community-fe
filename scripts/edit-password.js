@@ -1,104 +1,151 @@
 document.addEventListener("DOMContentLoaded", function () {
+    const BACKEND_URL = "http://localhost:8080/api/member";
     const passwordInput = document.getElementById("password");
     const confirmPasswordInput = document.getElementById("confirm-password");
-    const updateBtn = document.getElementById("update-password-btn");
+    const updatePasswordBtn = document.getElementById("update-password-btn");
     const toast = document.getElementById("toast");
-
     const passwordHelper = document.getElementById("password-helper");
     const confirmPasswordHelper = document.getElementById("confirm-password-helper");
 
-    const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,20}$/;
+    toast.style.display = "none";
 
-    let isPasswordValid = false; 
-    let isConfirmPasswordValid = false;
+    // Refresh Token을 사용하여 Access Token 갱신
+    async function refreshAccessToken() {
+        try {
+            const refreshToken = localStorage.getItem("refreshToken");
 
-    function validatePassword() {
-        const password = passwordInput.value.trim();
-        if (!passwordPattern.test(password)) {
-            passwordHelper.style.display = "block";
-            isPasswordValid = false;
-        } else {
-            passwordHelper.style.display = "none";
-            isPasswordValid = true;
+            if (!refreshToken) return null;
+
+            const response = await fetch("http://localhost:8080/auth/reissue", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ refreshToken }),
+            });
+
+            if (!response.ok) return null;
+
+            const data = await response.json();
+            const newAccessToken = data.data.accessToken;
+
+            localStorage.setItem("accessToken", newAccessToken);
+
+            return newAccessToken;
+        } catch (error) {
+            console.error("토큰 갱신 중 오류 발생:", error);
+            return null;
         }
-        validateForm();
     }
 
-    function validateConfirmPassword() {
+    // 비밀번호 유효성 검사 함수
+    function validatePassword() {
         const password = passwordInput.value.trim();
         const confirmPassword = confirmPasswordInput.value.trim();
 
-        if (!isPasswordValid) {
-            confirmPasswordHelper.style.display = "none"; 
-            isConfirmPasswordValid = false;
-            return;
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,20}$/;
+
+        let isValid = true;
+
+        // 비밀번호 형식 검사
+        if (!passwordRegex.test(password)) {
+            passwordHelper.textContent = "* 비밀번호는 8자 이상, 20자 이하이며, 대문자, 소문자, 숫자, 특수문자를 포함해야 합니다.";
+            passwordHelper.style.display = "block";
+            isValid = false;
+        } else {
+            passwordHelper.style.display = "none";
         }
 
+        // 비밀번호 확인 검사
         if (confirmPassword === "") {
-            confirmPasswordHelper.textContent = "* 비밀번호를 한 번 더 입력해주세요.";
+            confirmPasswordHelper.textContent = "* 비밀번호 확인이 필요합니다.";
             confirmPasswordHelper.style.display = "block";
-            isConfirmPasswordValid = false;
+            isValid = false;
         } else if (password !== confirmPassword) {
-            confirmPasswordHelper.textContent = "* 비밀번호 확인이 비밀번호와 다릅니다.";
+            confirmPasswordHelper.textContent = "* 비밀번호가 일치하지 않습니다.";
             confirmPasswordHelper.style.display = "block";
-            isConfirmPasswordValid = false;
+            isValid = false;
         } else {
             confirmPasswordHelper.style.display = "none";
-            isConfirmPasswordValid = true;
         }
-        validateForm();
-    }
 
-    function validateForm() {
-        if (isPasswordValid && isConfirmPasswordValid) {
-            updateBtn.disabled = false;
-            updateBtn.classList.add("enabled");
+        // 버튼 활성화/비활성화
+        if (isValid) {
+            updatePasswordBtn.classList.add("enabled");
+            updatePasswordBtn.disabled = false;
         } else {
-            updateBtn.disabled = true;
-            updateBtn.classList.remove("enabled");
+            updatePasswordBtn.classList.remove("enabled");
+            updatePasswordBtn.disabled = true;
         }
     }
 
     passwordInput.addEventListener("input", validatePassword);
-    confirmPasswordInput.addEventListener("focus", validateConfirmPassword);
-    confirmPasswordInput.addEventListener("input", validateConfirmPassword);
+    confirmPasswordInput.addEventListener("input", validatePassword);
 
-    updateBtn.addEventListener("click", function () {
-        if (!updateBtn.disabled) {
-            toast.style.display = "block"; 
+    // 비밀번호 변경 API 요청
+    updatePasswordBtn.addEventListener("click", async function () {
+        if (updatePasswordBtn.disabled) return;
 
-            setTimeout(() => {
-                toast.style.display = "none"; 
-            }, 2000);
+        let accessToken = localStorage.getItem("accessToken");
+
+        if (!accessToken) {
+            alert("로그인이 필요합니다.");
+            window.location.href = "login.html";
+            return;
         }
-    });
 
-    updateBtn.addEventListener("click", async function () {
-        if (updateBtn.disabled) return;
-
-        const requestData = {
-            password: passwordInput.value.trim(),
-            confirmPassword: confirmPasswordInput.value.trim()
+        const requestBody = {
+            newPassword: passwordInput.value.trim(),
+            confirmPassword: confirmPasswordInput.value.trim(),
         };
 
         try {
-            const response = await fetch("https://jsonplaceholder.typicode.com/users/password", {
+            let response = await fetch(`${BACKEND_URL}/me/password`, {
                 method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(requestData)
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${accessToken}`,
+                },
+                body: JSON.stringify(requestBody),
             });
 
-            const result = await response.json();
+            // 401 Unauthorized 발생 시 토큰 갱신 후 재시도
+            if (response.status === 401) {
+                const newAccessToken = await refreshAccessToken();
+
+                if (!newAccessToken) {
+                    alert("로그인이 필요합니다.");
+                    window.location.href = "login.html";
+                    return;
+                }
+
+                accessToken = newAccessToken;
+
+                response = await fetch(`${BACKEND_URL}/me/password`, {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${accessToken}`,
+                    },
+                    body: JSON.stringify(requestBody),
+                });
+
+                if (!response.ok) throw new Error("비밀번호 변경에 실패했습니다.");
+            }
+
+            const responseData = await response.json();
 
             if (response.ok) {
                 toast.style.display = "block";
                 setTimeout(() => { toast.style.display = "none"; }, 2000);
+                passwordInput.value = "";
+                confirmPasswordInput.value = "";
+                updatePasswordBtn.classList.remove("enabled");
+                updatePasswordBtn.disabled = true;
             } else {
-                alert("비밀번호 변경 실패. 다시 시도해주세요.");
+                alert(responseData.message || "비밀번호 변경 실패.");
             }
         } catch (error) {
-            console.error("비밀번호 변경 중 오류 발생:", error);
-            alert("네트워크 오류가 발생했습니다. 다시 시도해주세요.");
+            console.error("비밀번호 변경 오류:", error);
+            alert("비밀번호 변경 중 오류가 발생했습니다.");
         }
     });
 });
