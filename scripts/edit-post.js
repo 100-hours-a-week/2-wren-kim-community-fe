@@ -1,7 +1,6 @@
 document.addEventListener("DOMContentLoaded", async function () {
-    const BACKEND_URL = "http://localhost:8080"; // 백엔드 API 주소
-    const urlParams = new URLSearchParams(window.location.search);
-    const postId = urlParams.get("id"); // URL에서 postId 가져오기
+    const BACKEND_URL = "http://localhost:8080";
+    const postId = new URLSearchParams(window.location.search).get("id");
 
     const titleInput = document.getElementById("post-title");
     const contentInput = document.getElementById("post-content");
@@ -9,185 +8,187 @@ document.addEventListener("DOMContentLoaded", async function () {
     const editBtn = document.getElementById("edit-btn");
     const helperText = document.getElementById("helper-text");
 
-    let selectedImages = []; // 새로 선택한 이미지 파일 저장
-    let keepImageIds = []; // 유지할 기존 이미지 ID 저장
+    const imageContainer = document.createElement("div");
+    imageContainer.classList.add("image-preview-container");
+    document.querySelector(".input-group:last-of-type").appendChild(imageContainer);
 
-    if (!postId) {
-        alert("잘못된 접근입니다.");
-        window.location.href = "posts.html";
-        return;
-    }
+    let images = []; // [{ id, url }] for existing, [{ file, previewUrl }] for new
 
-    // 게시글 데이터 불러오기
-    async function fetchPostDetails() {
+    async function refreshAccessToken() {
         try {
-            const response = await fetch(`${BACKEND_URL}/api/posts/${postId}`);
-            if (!response.ok) throw new Error("게시글을 불러오는 데 실패했습니다.");
+            const refreshToken = localStorage.getItem("refreshToken");
+            const accessToken = localStorage.getItem("accessToken");
+            if (!refreshToken || !accessToken) return null;
 
-            const responseData = await response.json();
-            renderPostDetails(responseData.data);
-        } catch (error) {
-            alert("게시글을 불러오는 중 오류가 발생했습니다.");
-        }
-    }
-
-    // 게시글 데이터 렌더링
-    function renderPostDetails(postData) {
-        if (!postData) {
-            alert("게시글 정보를 가져오는 중 오류가 발생했습니다.");
-            return;
-        }
-
-        titleInput.value = postData.title;
-        contentInput.value = postData.content;
-
-        if (postData.imageUrls.length > 0) {
-            displayExistingImages(postData.imageUrls);
-        }
-
-        validateInputs();
-    }
-
-    // 기존 이미지 미리보기
-    function displayExistingImages(imageUrls) {
-        const imageContainer = document.createElement("div");
-        imageContainer.classList.add("image-preview-container");
-
-        imageUrls.forEach((url, index) => {
-            const imgWrapper = document.createElement("div");
-            imgWrapper.classList.add("image-wrapper");
-
-            const imgElement = document.createElement("img");
-            imgElement.src = BACKEND_URL + url; // URL 절대경로로 설정
-            imgElement.classList.add("preview-image");
-            imgElement.onerror = function () {
-                imgElement.src = "../assets/images/default.png"; // 이미지 로드 실패 시 기본 이미지
-            };
-
-            const removeBtn = document.createElement("button");
-            removeBtn.innerText = "X";
-            removeBtn.classList.add("remove-image-btn");
-            removeBtn.addEventListener("click", function () {
-                imgWrapper.remove();
-                keepImageIds.splice(index, 1);
+            const res = await fetch(`${BACKEND_URL}/auth/reissue`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ accessToken, refreshToken }),
             });
 
-            imgWrapper.appendChild(imgElement);
-            imgWrapper.appendChild(removeBtn);
-            imageContainer.appendChild(imgWrapper);
-        });
-
-        document.querySelector(".input-group").appendChild(imageContainer);
-    }
-
-    // 입력값 유효성 검사
-    function validateInputs() {
-        const title = titleInput.value.trim();
-        const content = contentInput.value.trim();
-
-        if (title.length > 0 && content.length > 0) {
-            editBtn.classList.remove("disabled");
-            editBtn.classList.add("active");
-            editBtn.disabled = false;
-            helperText.style.display = "none";
-        } else {
-            editBtn.classList.add("disabled");
-            editBtn.classList.remove("active");
-            editBtn.disabled = true;
-            helperText.style.display = "block";
+            if (!res.ok) return null;
+            const data = await res.json();
+            const newAccessToken = data.data.accessToken;
+            localStorage.setItem("accessToken", newAccessToken);
+            return newAccessToken;
+        } catch {
+            return null;
         }
     }
+
+    async function fetchPostDetails() {
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/posts/${postId}`);
+            const data = await res.json();
+            const post = data.data;
+
+            titleInput.value = post.title;
+            contentInput.value = post.content;
+
+            // ✅ imageUrls → images [{ id, imageUrl, orderIndex }]
+            if (post.images?.length) {
+                images = post.images
+                    .sort((a, b) => a.orderIndex - b.orderIndex)
+                    .map(img => ({ id: img.id, url: BACKEND_URL + img.imageUrl }));
+            }
+
+            renderImages();
+            validateInputs();
+        } catch (e) {
+            alert("게시글을 불러오는 중 오류 발생");
+        }
+    }
+
+    function validateInputs() {
+        const valid = titleInput.value.trim() && contentInput.value.trim();
+        editBtn.disabled = !valid;
+        editBtn.classList.toggle("active", valid);
+        editBtn.classList.toggle("disabled", !valid);
+        helperText.style.display = valid ? "none" : "block";
+    }
+
+    function renderImages() {
+        imageContainer.innerHTML = "";
+        images.forEach((img, idx) => {
+            const wrapper = document.createElement("div");
+            wrapper.className = "image-wrapper";
+            wrapper.draggable = true;
+            wrapper.dataset.index = idx;
+
+            const image = document.createElement("img");
+            image.className = "preview-image";
+            image.src = img.url || img.previewUrl;
+
+            const removeBtn = document.createElement("button");
+            removeBtn.className = "remove-image-btn";
+            removeBtn.textContent = "X";
+            removeBtn.onclick = () => {
+                images.splice(idx, 1);
+                renderImages();
+            };
+
+            wrapper.appendChild(image);
+            wrapper.appendChild(removeBtn);
+
+            // Drag & Drop
+            wrapper.addEventListener("dragstart", e => {
+                e.dataTransfer.setData("from", idx);
+            });
+            wrapper.addEventListener("dragover", e => e.preventDefault());
+            wrapper.addEventListener("drop", e => {
+                const from = parseInt(e.dataTransfer.getData("from"));
+                const to = idx;
+                const moved = images.splice(from, 1)[0];
+                images.splice(to, 0, moved);
+                renderImages();
+            });
+
+            imageContainer.appendChild(wrapper);
+        });
+    }
+
+    imageInput.addEventListener("change", e => {
+        Array.from(e.target.files).forEach(file => {
+            const reader = new FileReader();
+            reader.onload = ev => {
+                images.push({ file, previewUrl: ev.target.result });
+                renderImages();
+            };
+            reader.readAsDataURL(file);
+        });
+    });
 
     titleInput.addEventListener("input", validateInputs);
     contentInput.addEventListener("input", validateInputs);
 
-    // 새 이미지 선택 시 저장 및 미리보기 추가
-    imageInput.addEventListener("change", function (event) {
-        selectedImages = Array.from(event.target.files); // 선택된 파일 저장
-        displayImagePreviews();
-    });
-
-    function displayImagePreviews() {
-        const imagePreviewContainer = document.createElement("div");
-        imagePreviewContainer.classList.add("image-preview-container");
-
-        selectedImages.forEach((file, index) => {
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                const imgWrapper = document.createElement("div");
-                imgWrapper.classList.add("image-wrapper");
-
-                const imgElement = document.createElement("img");
-                imgElement.src = e.target.result;
-                imgElement.classList.add("preview-image");
-
-                const removeBtn = document.createElement("button");
-                removeBtn.innerText = "X";
-                removeBtn.classList.add("remove-image-btn");
-                removeBtn.addEventListener("click", function () {
-                    selectedImages.splice(index, 1);
-                    displayImagePreviews();
-                });
-
-                imgWrapper.appendChild(imgElement);
-                imgWrapper.appendChild(removeBtn);
-                imagePreviewContainer.appendChild(imgWrapper);
-            };
-            reader.readAsDataURL(file);
-        });
-
-        document.querySelector(".input-group").appendChild(imagePreviewContainer);
-    }
-
-    // 게시글 수정 요청
-    editBtn.addEventListener("click", async function () {
+    editBtn.addEventListener("click", async () => {
         if (editBtn.disabled) return;
 
-        const title = titleInput.value.trim();
-        const content = contentInput.value.trim();
-        const accessToken = localStorage.getItem("accessToken");
-
+        let accessToken = localStorage.getItem("accessToken");
         if (!accessToken) {
             alert("로그인이 필요합니다.");
             return;
         }
 
-        const formData = new FormData();
-        formData.append("data", JSON.stringify({ title, content, keepImageIds }));
+        const keepImageIds = images.filter(img => img.id).map(img => img.id);
+        const orderIndexMap = {};
 
-        // 새 이미지 추가
-        selectedImages.forEach((file) => {
-            formData.append("images", file);
+        images.forEach((img, i) => {
+            if (img.id) {
+                orderIndexMap[img.id] = i + 1;
+            }
         });
 
-        // orderIndex 정확하게 맞추기
-        const updatedOrderIndexes = [...keepImageIds.map((_, idx) => idx + 1), ...selectedImages.map((_, idx) => keepImageIds.length + idx + 1)];
+        const postData = {
+            postData: {
+                title: titleInput.value.trim(),
+                content: contentInput.value.trim(),
+                keepImageIds,
+                orderIndexMap
+            }
+        };
 
-        formData.append("orderIndexes", JSON.stringify(updatedOrderIndexes));
+        const formData = new FormData();
+
+        formData.append("updateData", new Blob([JSON.stringify(postData)], { type: "application/json" }));
+
+        images.forEach(img => {
+            if (img.file instanceof File) {
+                formData.append("newImages", img.file);
+            }
+        });
 
         try {
-            const response = await fetch(`${BACKEND_URL}/api/posts/${postId}`, {
-                method: "PUT",
-                headers: {
-                    "Authorization": `Bearer ${accessToken}`,
-                },
+            let res = await fetch(`${BACKEND_URL}/api/posts/${postId}`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${accessToken}` },
                 body: formData,
             });
 
-            const result = await response.json();
+            if (res.status === 401) {
+                const newToken = await refreshAccessToken();
+                if (!newToken) return (window.location.href = "login.html");
 
-            if (response.ok) {
-                alert("게시글이 성공적으로 수정되었습니다!");
-                window.location.href = `post.html?id=${postId}`;
-            } else {
-                alert(`오류 발생: ${result.message}`);
+                res = await fetch(`${BACKEND_URL}/api/posts/${postId}`, {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${newToken}` },
+                    body: formData,
+                });
             }
-        } catch (error) {
-            console.error("게시글 수정 중 오류 발생:", error);
-            alert("게시글 수정 중 오류가 발생했습니다.");
+
+            const result = await res.json();
+
+            if (res.ok) {
+                alert("게시글이 수정되었습니다.");
+                window.location.href = `post.html?id=${postId}&t=${Date.now()}`;
+            } else {
+                alert(`수정 실패: ${result.message}`);
+            }
+        } catch (e) {
+            alert("수정 중 오류 발생");
+            console.error(e);
         }
     });
 
-    // 게시글 데이터 불러오기
     fetchPostDetails();
 });

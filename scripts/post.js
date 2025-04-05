@@ -52,6 +52,35 @@ document.addEventListener("DOMContentLoaded", async function () {
         }
     }
 
+    function renderPostImages(images) {
+        const imageContainer = document.querySelector(".post-image-container");
+        imageContainer.innerHTML = "";
+
+        if (!images || images.length === 0) {
+            const defaultImg = document.createElement("img");
+            defaultImg.src = "../assets/images/default.png";
+            defaultImg.alt = "기본 이미지";
+            defaultImg.classList.add("post-image");
+            imageContainer.appendChild(defaultImg);
+            return;
+        }
+
+        // ✅ orderIndex 순 정렬 후 timestamp 붙여서 캐시 방지
+        const timestamp = Date.now();
+        images
+            .sort((a, b) => a.orderIndex - b.orderIndex)
+            .forEach(img => {
+                const image = document.createElement("img");
+                image.src = `${BACKEND_URL}${img.imageUrl}?t=${timestamp}`;
+                image.alt = "게시글 이미지";
+                image.classList.add("post-image");
+                image.onerror = () => {
+                    image.src = "../assets/images/default.png";
+                };
+                imageContainer.appendChild(image);
+            });
+    }
+
     // 게시글 데이터 렌더링
     function renderPostDetails(postData) {
         if (!postData) {
@@ -60,16 +89,39 @@ document.addEventListener("DOMContentLoaded", async function () {
             return;
         }
 
-        console.log("렌더링할 게시글 데이터:", postData);
-
         postTitle.textContent = postData.title;
-        authorName.textContent = postData.memberNickname || "익명";
         postDate.textContent = formatDate(postData.updatedAt || postData.createdAt);
         postText.textContent = postData.content || "내용이 없습니다.";
-        postImage.src = postData.imageUrls.length > 0 ? postData.imageUrls[0] : "../assets/images/default.png";
+
+        renderPostImages(postData.images);
+
+        const authorProfileImage = postData.memberProfileImageUrl
+            ? `${BACKEND_URL}${postData.memberProfileImageUrl}`
+            : "../assets/images/default.png";
+
+        authorName.innerHTML = `
+        <img src="${authorProfileImage}" alt="작성자 프로필" class="post-author-img"
+             onerror="this.onerror=null; this.src='../assets/images/default.png';">
+        ${postData.memberNickname || "익명"}
+    `;
 
         updateStats(postData);
         renderComments(postData.comments);
+    }
+
+    // 날짜 포맷 함수
+    function formatDate(dateString) {
+        if (!dateString) return "날짜 없음";
+        const d = new Date(dateString);
+        return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()} ${d.getHours()}:${d.getMinutes()}`;
+    }
+
+    // 숫자 포맷 변환 함수
+    function formatCount(number) {
+        if (number >= 100000) return (number / 1000).toFixed(0) + "k";
+        if (number >= 10000) return (number / 1000).toFixed(0) + "k";
+        if (number >= 1000) return (number / 1000).toFixed(1) + "k";
+        return number;
     }
 
     // 좋아요 상태 변경 API 호출
@@ -157,28 +209,36 @@ document.addEventListener("DOMContentLoaded", async function () {
         let isDeleted = comment.isDeleted;
         let commentContent = isDeleted ? "삭제된 댓글입니다." : comment.content;
         let authorName = isDeleted ? "(알수없음)" : comment.memberNickname;
-        let profileImage = isDeleted ? "../assets/images/default.png" : comment.memberProfileImageUrl || '../assets/images/default.png';
+        let profileImage = isDeleted
+            ? "../assets/images/default.png"
+            : comment.memberProfileImageUrl
+                ? `${BACKEND_URL}${comment.memberProfileImageUrl}`
+                : "../assets/images/default.png";
 
-        let actionsHTML = isDeleted ? "" : `
-        <button class="reply-comment">답글</button>
-        <button class="edit-comment">수정</button>
-        <button class="delete-comment">삭제</button>
-    `;
+        let actionsHTML = "";
+        if (!isDeleted) {
+            actionsHTML = `
+                <button class="reply-comment">답글</button>
+                <button class="edit-comment">수정</button>
+                <button class="delete-comment">삭제</button>
+            `;
+        }
 
         commentItem.innerHTML = `
-        <div class="comment-header">
-            <img src="${profileImage}" alt="프로필" class="comment-author-img">
-            <div class="comment-info">
-                <span class="comment-author">${authorName}</span>
-                <span class="comment-date">${formatDate(comment.updatedAt || comment.createdAt)}</span>
+            <div class="comment-header">
+                <img src="${profileImage}" alt="프로필" class="comment-author-img"
+                    onerror="this.onerror=null; this.src='../assets/images/default.png';">
+                <div class="comment-info">
+                    <span class="comment-author">${authorName}</span>
+                    <span class="comment-date">${formatDate(comment.updatedAt || comment.createdAt)}</span>
+                </div>
+                <div class="comment-actions">
+                    ${actionsHTML}
+                </div>
             </div>
-            <div class="comment-actions">
-                ${actionsHTML}
-            </div>
-        </div>
-        <p class="comment-text">${commentContent}</p>
-        <ul class="reply-list"></ul>
-    `;
+            <p class="comment-text">${commentContent}</p>
+            <ul class="reply-list"></ul>
+        `;
 
         if (isDeleted) {
             commentItem.classList.add("deleted-comment");
@@ -240,20 +300,25 @@ document.addEventListener("DOMContentLoaded", async function () {
         replyItem.classList.add("reply");
         replyItem.setAttribute("data-id", reply.id);
 
+        let replyProfileImage = reply.memberProfileImageUrl
+            ? `${BACKEND_URL}${reply.memberProfileImageUrl}`
+            : "../assets/images/default.png";
+
         replyItem.innerHTML = `
-        <div class="comment-header">
-            <img src="${reply.memberProfileImageUrl || '../assets/images/default.png'}" alt="프로필" class="comment-author-img">
-            <div class="comment-info">
-                <span class="comment-author">${reply.memberNickname}</span>
-                <span class="comment-date">${formatDate(reply.updatedAt || reply.createdAt)}</span>
+            <div class="comment-header">
+                <img src="${replyProfileImage}" alt="프로필" class="comment-author-img"
+                    onerror="this.onerror=null; this.src='../assets/images/default.png';">
+                <div class="comment-info">
+                    <span class="comment-author">${reply.memberNickname}</span>
+                    <span class="comment-date">${formatDate(reply.updatedAt || reply.createdAt)}</span>
+                </div>
+                <div class="reply-actions">
+                    <button class="edit-reply">수정</button>
+                    <button class="delete-reply">삭제</button>
+                </div>
             </div>
-            <div class="reply-actions"> <!-- 대댓글 수정/삭제 버튼 추가 -->
-                <button class="edit-reply">수정</button>
-                <button class="delete-reply">삭제</button>
-            </div>
-        </div>
-        <p class="comment-text">${reply.content}</p>
-    `;
+            <p class="comment-text">${reply.content}</p>
+        `;
 
         parentElement.appendChild(replyItem);
     }
@@ -334,28 +399,6 @@ document.addEventListener("DOMContentLoaded", async function () {
 
         // 기존 내용 저장
         const originalContent = commentText.textContent;
-
-        // 기존 내용을 입력창으로 변경 (textarea 사용)
-        // const editContainer = document.createElement("div");
-        // editContainer.classList.add("edit-container");
-        //
-        // const textarea = document.createElement("textarea");
-        // textarea.classList.add("comment-input");
-        // textarea.value = originalContent;
-        // textarea.rows = 3;
-        //
-        // const saveBtn = document.createElement("button");
-        // saveBtn.textContent = "저장";
-        // saveBtn.classList.add("comment-submit");
-        //
-        // const cancelBtn = document.createElement("button");
-        // cancelBtn.textContent = "취소";
-        // cancelBtn.classList.add("reply-cancel");
-        //
-        // editContainer.appendChild(textarea);
-        // editContainer.appendChild(saveBtn);
-        // editContainer.appendChild(cancelBtn);
-        // commentText.replaceWith(editContainer);
 
         const editContainer = document.createElement("div");
         editContainer.classList.add("comment-input-container");
@@ -482,7 +525,6 @@ document.addEventListener("DOMContentLoaded", async function () {
             alert(`댓글 삭제 중 오류가 발생했습니다.\n${error.message}`);
         }
     }
-
 
     // 대댓글 수정 처리
     async function handleEditReply(event) {
@@ -624,28 +666,20 @@ document.addEventListener("DOMContentLoaded", async function () {
         commentCountStat.innerHTML = `${count + 1}<br>댓글`;
     }
 
-    // 삭제 버튼이 정상적으로 선택되었는지 확인
-    console.log("삭제 버튼: ", deleteButton);
-    console.log("삭제 모달: ", deletePostModal);
-
     if (!deleteButton || !deletePostModal || !confirmDeletePostBtn || !cancelDeletePostBtn) {
         console.error("삭제 관련 요소가 정상적으로 로드되지 않았습니다.");
         return;
     }
 
-    // 삭제 버튼 클릭 시 모달 표시
+    likeButton.addEventListener("click", toggleLike);
     deleteButton.addEventListener("click", function () {
         console.log("🛠️ 삭제 버튼 클릭됨");
         deletePostModal.style.display = "block";
     });
-
-    // 삭제 취소 버튼 클릭 시 모달 닫기
     cancelDeletePostBtn.addEventListener("click", function () {
         console.log("🛠️ 삭제 취소 버튼 클릭됨");
         deletePostModal.style.display = "none";
     });
-
-    // 게시글 삭제 요청
     confirmDeletePostBtn.addEventListener("click", async function () {
         console.log("🛠️ 삭제 확인 버튼 클릭됨");
 
@@ -675,22 +709,6 @@ document.addEventListener("DOMContentLoaded", async function () {
             alert("게시글 삭제 중 오류가 발생했습니다.");
         }
     });
-
-    // 날짜 포맷 함수
-    function formatDate(dateString) {
-        if (!dateString) return "날짜 없음";
-        const d = new Date(dateString);
-        return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()} ${d.getHours()}:${d.getMinutes()}`;
-    }
-
-    // 숫자 포맷 변환 함수
-    function formatCount(number) {
-        if (number >= 100000) return (number / 1000).toFixed(0) + "k";
-        if (number >= 10000) return (number / 1000).toFixed(0) + "k";
-        if (number >= 1000) return (number / 1000).toFixed(1) + "k";
-        return number;
-    }
-
     commentList.addEventListener("click", handleReplyButtonClick);
     commentSubmitBtn.addEventListener("click", handleCommentSubmit);
     replySubmitBtn.addEventListener("click", handleReplySubmit);
@@ -703,9 +721,6 @@ document.addEventListener("DOMContentLoaded", async function () {
         replyInput.value = "";
         targetCommentId = null;
     });
-
-    likeButton.addEventListener("click", toggleLike);
-
     editButton.addEventListener("click", function () {
         window.location.href = `edit-post.html?id=${postId}`;
     });
